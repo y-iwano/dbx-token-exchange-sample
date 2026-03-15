@@ -1,0 +1,23 @@
+---
+description: General project rules for Cursor
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Project Rules
+
+## Overview
+
+<!-- TODO: Describe the project purpose -->
+
+## Coding Conventions
+
+- <!-- TODO: Add language/framework conventions -->
+
+## File Structure
+
+- <!-- TODO: Describe directory layout -->
+
+## Do's and Don'ts
+
+- <!-- TODO: Add project-specific guidelines -->
