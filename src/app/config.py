@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,19 @@ class Settings(BaseSettings):
     # Managed MCP servers to proxy (parsed from JSON)
     mcp_servers: list[ManagedMCPServerConfig]
 
+    # OAuth scopes advertised in the protected resource metadata.
+    # If not set, defaults to ["openid", "api://<azure_client_id>/access"].
+    oauth_scopes: list[str] = []
+
+    # Short-form scope names (as defined in Azure Portal "Expose an API") that
+    # incoming tokens must contain in their ``scp`` claim.
+    # If not set, scp validation is skipped.
+    required_scopes: list[str] | None = None
+
+    # Application ID URI of the Entra App Registration (used to prefix scopes
+    # in OAuth metadata). Defaults to api://<azure_client_id>.
+    identifier_uri: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("databricks_host")
@@ -76,3 +89,11 @@ class Settings(BaseSettings):
         if not 1 <= v <= 65535:
             raise ValueError("port must be between 1 and 65535")
         return v
+
+    @model_validator(mode="after")
+    def set_defaults(self) -> "Settings":
+        if not self.oauth_scopes:
+            self.oauth_scopes = ["openid", f"api://{self.azure_client_id}/access"]
+        if not self.identifier_uri:
+            self.identifier_uri = f"api://{self.azure_client_id}"
+        return self

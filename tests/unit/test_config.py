@@ -88,6 +88,14 @@ class TestSettings:
         s = Settings()
         assert s.mcp_servers == []
 
+    def test_oauth_scopes_default(self, settings):
+        assert settings.oauth_scopes == ["openid", "api://test-client-id/access"]
+
+    def test_oauth_scopes_explicit(self, valid_env, monkeypatch):
+        monkeypatch.setenv("OAUTH_SCOPES", '["openid", "api://custom-id/access", "email"]')
+        s = Settings(_env_file=None)
+        assert s.oauth_scopes == ["openid", "api://custom-id/access", "email"]
+
     def test_mcp_servers_multiple(self, valid_env, monkeypatch):
         monkeypatch.setenv(
             "MCP_SERVERS",

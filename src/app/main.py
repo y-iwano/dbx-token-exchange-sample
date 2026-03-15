@@ -4,9 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 
 import httpx
+import uvicorn
 from fastmcp import FastMCP
 from fastmcp.server.auth import RemoteAuthProvider
 from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from app.auth.entra import create_verifier
 from app.auth.token_exchange import DatabricksTokenExchanger
@@ -34,6 +37,9 @@ def build_app(settings: Settings) -> FastMCP:  # pylint: disable=redefined-outer
             f"https://login.microsoftonline.com/{settings.azure_tenant_id}/v2.0"
         ],
         base_url=settings.base_url,
+        # Scopes advertised to MCP clients. Configured via OAUTH_SCOPES in .env.
+        # Defaults to ["openid", "api://<azure_client_id>/access"] if not set.
+        scopes_supported=settings.oauth_scopes,
     )
 
     http_client = httpx.AsyncClient()
@@ -67,5 +73,16 @@ def build_app(settings: Settings) -> FastMCP:  # pylint: disable=redefined-outer
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     settings = Settings()
-    app = build_app(settings)
-    app.run(transport="streamable-http", port=settings.port)
+    mcp = build_app(settings)
+    asgi_app = mcp.http_app(
+        transport="streamable-http",
+        middleware=[
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+        ],
+    )
+    uvicorn.run(asgi_app, host="127.0.0.1", port=settings.port)

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sv http://localhost:3100/.well-known/oauth-protected-resource)",
+      "Bash(curl -s \"http://localhost:3100/.well-known/oauth-authorization-server\" -H \"Accept: application/json\" -w \"\\\\nHTTP_STATUS: %{http_code}\")",
+      "Bash(curl -s http://localhost:3100/mcp -X GET -H \"Accept: application/json\" -w \"\\\\nHTTP_STATUS: %{http_code}\")",
+      "Bash(curl -sv http://localhost:3100/mcp -X GET -H \"Accept: application/json\")",
+      "Bash(curl -s \"http://localhost:3100/.well-known/oauth-protected-resource/mcp\")",
+      "Bash(python3 -c \"import inspect; from fastmcp.server.auth import RemoteAuthProvider; print\\(inspect.signature\\(RemoteAuthProvider.__init__\\)\\)\")",
+      "Bash(.venv/bin/python -c \"import inspect; from fastmcp.server.auth import RemoteAuthProvider; print\\(inspect.signature\\(RemoteAuthProvider.__init__\\)\\)\")",
+      "Bash(curl -s http://localhost:3100/.well-known/oauth-protected-resource/mcp)",
+      "Bash(pkill -f \"python -m app.main\")",
+      "Read(//Users/khronov/.npm/**)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/PrefectHQ/fastmcp/main/src/fastmcp/server/auth/providers/azure.py\")"
+    ],
+    "additionalDirectories": [
+      "/Users/khronov/.npm/_npx/5a9d879542beca3a"
+    ]
+  }
+}

@@ -9,7 +9,7 @@ src/
     config.py             # pydantic-settings による環境変数管理
     auth/
       __init__.py
-      entra.py            # Entra ID トークン検証（JWTVerifier 設定）
+      entra.py            # Entra ID トークン検証（AzureJWTVerifier 設定）
       token_exchange.py   # Databricks トークン交換ロジック
     proxy/
       __init__.py
@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # プロキシ対象の Databricks Managed MCP サーバー一覧（JSON 配列）
     mcp_servers: list[ManagedMCPServerConfig]
 
+    # MCP クライアントに公開する OAuth スコープ一覧（JSON 配列）
+    # 未設定時は ["openid", "api://<azure_client_id>/access"] を自動生成
+    oauth_scopes: list[str] = []
+
+    # 受信トークンの scp クレームに必要なスコープ名（短縮形・Azure Portal 定義と一致）
+    # 未設定時は scp クレームの検証をスキップ
+    required_scopes: list[str] | None = None
+
+    # Entra ID App Registration の Application ID URI
+    # 未設定時は api://<azure_client_id>
+    identifier_uri: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 ```
 
@@ -57,21 +69,23 @@ class Settings(BaseSettings):
 
 ## `auth/entra.py` — Entra ID 検証
 
-`JWTVerifier` を Entra ID 向けに設定して返す。
+`AzureJWTVerifier` を Entra ID 向けに設定して返す。
 
 ```python
-def create_verifier(settings: Settings) -> JWTVerifier:
-    return JWTVerifier(
-        jwks_uri=f"https://login.microsoftonline.com/{settings.azure_tenant_id}/discovery/v2.0/keys",
-        issuer=f"https://login.microsoftonline.com/{settings.azure_tenant_id}/v2.0",
-        audience=[settings.azure_client_id, f"api://{settings.azure_client_id}"],
+def create_verifier(settings: Settings) -> AzureJWTVerifier:
+    return AzureJWTVerifier(
+        client_id=settings.azure_client_id,
+        tenant_id=settings.azure_tenant_id,
+        required_scopes=settings.required_scopes,
+        identifier_uri=settings.identifier_uri,
     )
 ```
 
 **責務:**
-- `JWTVerifier` インスタンスの生成のみ
-- 実際のトークン検証（署名・issuer・audience・expiry）は FastMCP ライブラリが実施
-- JWKS は `JWTVerifier` が OIDC discovery endpoint から自動取得・キャッシュ
+- `AzureJWTVerifier` インスタンスの生成のみ
+- 実際のトークン検証（署名・issuer・audience・expiry・scp）は FastMCP ライブラリが実施
+- JWKS URI・issuer・audience は `AzureJWTVerifier` が `azure_tenant_id` / `azure_client_id` から自動設定
+- `scopes_supported` プロパティが `identifier_uri` + `required_scopes` から完全形スコープ URI を自動生成
 
 ---
 
@@ -152,6 +166,7 @@ def build_app(settings: Settings) -> FastMCP:
         token_verifier=verifier,
         authorization_servers=[f"https://login.microsoftonline.com/{tenant_id}/v2.0"],
         base_url=settings.base_url,
+        scopes_supported=settings.oauth_scopes,  # OAUTH_SCOPES 環境変数から取得
     )
     exchanger = DatabricksTokenExchanger(settings, httpx.AsyncClient())
 
@@ -194,7 +209,7 @@ MCP クライアントは単一 URL `{BASE_URL}/mcp` に接続するだけで、
 ## 依存関係
 
 ```
-fastmcp>=3.0.0      # MCP フレームワーク（JWTVerifier, RemoteAuthProvider, ProxyProvider, add_provider namespace 対応）
+fastmcp>=3.0.0      # MCP フレームワーク（AzureJWTVerifier, RemoteAuthProvider, ProxyProvider, add_provider namespace 対応）
 httpx               # 非同期 HTTP クライアント（トークン交換リクエスト）
 pydantic-settings   # 環境変数管理
 ```
