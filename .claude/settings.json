@@ -11,7 +11,18 @@
       "Bash(curl -s http://localhost:3100/.well-known/oauth-protected-resource/mcp)",
       "Bash(pkill -f \"python -m app.main\")",
       "Read(//Users/khronov/.npm/**)",
-      "Bash(curl -s \"https://raw.githubusercontent.com/PrefectHQ/fastmcp/main/src/fastmcp/server/auth/providers/azure.py\")"
+      "Bash(curl -s \"https://raw.githubusercontent.com/PrefectHQ/fastmcp/main/src/fastmcp/server/auth/providers/azure.py\")",
+      "Bash(aws sts:*)",
+      "Bash(aws configure:*)",
+      "Bash(aws ec2:*)",
+      "Bash(aws acm:*)",
+      "Bash(aws route53:*)",
+      "Bash(aws ssm:*)",
+      "Bash(aws iam:*)",
+      "Bash(__NEW_LINE_0efeaeb159100014__ aws:*)",
+      "Bash(__NEW_LINE_0efeaeb159100014__ echo:*)",
+      "Bash(aws cloudfront:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" https://dbx-token-exchange.yiwano-demo.net/mcp curl -s https://dbx-token-exchange.yiwano-demo.net/mcp)"
     ],
     "additionalDirectories": [
       "/Users/khronov/.npm/_npx/5a9d879542beca3a"
