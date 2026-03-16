@@ -130,7 +130,7 @@ MCP Inspector は保護リソースメタデータの `resource` フィールド
 
 | 設定項目 | 値 |
 |---|---|
-| `requestedAccessTokenVersion` (Manifest) | `2`（必須。v2.0 トークンを発行するため） |
+| `accessTokenAcceptedVersion` (Manifest) | `2`（必須。v2.0 トークンを発行するため） |
 | API の公開 / スコープ | `access`（任意の名前）を定義 |
 | リダイレクト URI | 不要（サーバーが OAuth フローを持たないため） |
 | クライアントシークレット | 不要（サーバーは検証のみ行うため） |

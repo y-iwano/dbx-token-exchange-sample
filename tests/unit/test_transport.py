@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.exceptions import HTTPException
 
 from app.auth.token_exchange import TokenExchangeError
 from app.proxy.transport import DatabricksTokenExchangeTransport
@@ -97,9 +98,21 @@ async def test_bearer_prefix_stripping(auth_header, expected_token):
     exchanger.exchange.assert_awaited_once_with(expected_token)
 
 
-async def test_exchange_error_propagates():
+@pytest.mark.parametrize(
+    "token_status, expected_http_status",
+    [
+        (400, 502),
+        (401, 502),
+        (500, 503),
+        (503, 503),
+        (None, 503),  # network error (no status_code)
+    ],
+)
+async def test_exchange_error_mapped_to_http_exception(token_status, expected_http_status):
     exchanger = AsyncMock()
-    exchanger.exchange.side_effect = TokenExchangeError("exchange failed", status_code=400)
+    exchanger.exchange.side_effect = TokenExchangeError(
+        "exchange failed", status_code=token_status
+    )
 
     transport = DatabricksTokenExchangeTransport(
         url="https://host/api/2.0/mcp/sql",
@@ -111,7 +124,9 @@ async def test_exchange_error_propagates():
             "app.proxy.transport.get_http_headers",
             return_value={"authorization": "Bearer entra-token"},
         ),
-        pytest.raises(TokenExchangeError, match="exchange failed"),
+        pytest.raises(HTTPException) as exc_info,
     ):
         async with transport.connect_session():
             pass
+
+    assert exc_info.value.status_code == expected_http_status

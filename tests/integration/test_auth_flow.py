@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
 
 async def test_token_exchange_with_valid_entra_token(int_settings, entra_token):
     """Valid Entra ID access token is exchanged for a Databricks access token."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         exchanger = DatabricksTokenExchanger(int_settings, client)
         db_token = await exchanger.exchange(entra_token)
 
@@ -23,7 +23,7 @@ async def test_token_exchange_with_valid_entra_token(int_settings, entra_token):
 
 async def test_token_exchange_with_invalid_token(int_settings):
     """A malformed token is rejected by Databricks with 400 or 401."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         exchanger = DatabricksTokenExchanger(int_settings, client)
         with pytest.raises(TokenExchangeError) as exc_info:
             await exchanger.exchange("this-is-not-a-valid-jwt")

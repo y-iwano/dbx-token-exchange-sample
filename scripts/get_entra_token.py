@@ -22,15 +22,16 @@ load_dotenv()
 
 import os  # noqa: E402 (load_dotenv の後に import)
 
-TENANT_ID = os.getenv("AZURE_TENANT_ID")
-CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+TENANT_ID = os.getenv("TEST_ENTRA_TENANT_ID")
+CLIENT_ID = os.getenv("TEST_ENTRA_CLIENT_ID")
+IDENTIFIER_URI = os.getenv("IDENTIFIER_URI")
 
 if not TENANT_ID or not CLIENT_ID:
     print("ERROR: AZURE_TENANT_ID and AZURE_CLIENT_ID must be set in .env")
     sys.exit(1)
 
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = [f"api://{CLIENT_ID}/access", "email"]
+SCOPES = [f"{IDENTIFIER_URI}/access", "email"]
 
 
 def main() -> None:

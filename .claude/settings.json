@@ -22,7 +22,20 @@
       "Bash(__NEW_LINE_0efeaeb159100014__ aws:*)",
       "Bash(__NEW_LINE_0efeaeb159100014__ echo:*)",
       "Bash(aws cloudfront:*)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" https://dbx-token-exchange.yiwano-demo.net/mcp curl -s https://dbx-token-exchange.yiwano-demo.net/mcp)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" https://dbx-token-exchange.yiwano-demo.net/mcp curl -s https://dbx-token-exchange.yiwano-demo.net/mcp)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://dbx-token-exchange.yiwano-demo.net/mcp sleep 90 aws logs get-log-events --log-group-name /vpc/flow-logs/dbx-token-exchange --log-stream-name eni-0ea36da1d9328ea15-all --query \"events[].message\" --output text)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://dbx-token-exchange.yiwano-demo.net/mcp)",
+      "Bash(curl -s https://dbx-token-exchange.yiwano-demo.net/mcp)",
+      "Bash(INTEGRATION_TESTS=true uv run pytest tests/integration/ -v --no-cov)",
+      "Bash(DATABRICKS_HOST=https://dbc-df588290-eedc.cloud.databricks.com databricks oauth custom-app list)",
+      "Bash(DATABRICKS_HOST=https://dbc-df588290-eedc.cloud.databricks.com databricks auth describe)",
+      "Bash(databricks account:*)",
+      "Bash(databricks service-principals:*)",
+      "Bash(databricks --help)",
+      "Bash(databricks api:*)",
+      "Bash(DATABRICKS_HOST=https://dbc-df588290-eedc.cloud.databricks.com databricks auth login)",
+      "Bash(python -c \"import inspect; from fastmcp.server.auth.providers.azure import AzureJWTVerifier; print\\(inspect.getsource\\(AzureJWTVerifier\\)\\)\")",
+      "Bash(python -c \"import inspect; from fastmcp.server.auth.providers.jwt import JWTVerifier; print\\(inspect.getsource\\(JWTVerifier.__init__\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/khronov/.npm/_npx/5a9d879542beca3a"

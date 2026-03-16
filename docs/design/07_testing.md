@@ -49,6 +49,9 @@ tests/
 | 500 エラー（3 回連続） | 最大リトライ後に `TokenExchangeError` が raise される |
 | ネットワークエラー | リトライ後に `TokenExchangeError` が raise される |
 | レスポンスに `access_token` がない | `TokenExchangeError` が raise される |
+| 501 エラー | リトライなしで即座に `TokenExchangeError` が raise される（`call_count == 1`） |
+| 502 / 503 / 504 エラー（1 回後に成功） | リトライ後に `access_token` が返る |
+| 503 + `Retry-After: 5` ヘッダー | `asyncio.sleep(5.0)` が呼ばれる（指数バックオフより優先） |
 
 ```python
 import respx, httpx, pytest
@@ -89,7 +92,8 @@ async def test_exchange_400_no_retry(exchanger):
 | 正常フロー | Entra トークンが取得され、交換後の Databricks トークンが `StreamableHttpTransport` の Authorization ヘッダーにセットされる |
 | Authorization ヘッダーなし | `TokenExchangeError` が raise される |
 | `Bearer ` プレフィックスの除去 | 大文字・小文字どちらの `bearer ` も正しく除去される |
-| `exchange()` が `TokenExchangeError` を raise した場合 | そのまま呼び出し元に伝播する |
+| `exchange()` が 400 / 401 の `TokenExchangeError` を raise した場合 | `HTTPException(502)` に変換される |
+| `exchange()` が 500 / 503 / なし の `TokenExchangeError` を raise した場合 | `HTTPException(503)` に変換される |
 
 ```python
 from unittest.mock import AsyncMock, patch, MagicMock

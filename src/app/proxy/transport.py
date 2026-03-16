@@ -6,6 +6,7 @@ from typing import Any, AsyncGenerator
 
 from fastmcp.client.transports import ClientTransport, StreamableHttpTransport
 from fastmcp.server.dependencies import get_http_headers
+from starlette.exceptions import HTTPException
 
 from app.auth.token_exchange import DatabricksTokenExchanger, TokenExchangeError
 
@@ -45,7 +46,13 @@ class DatabricksTokenExchangeTransport(ClientTransport):
             raise TokenExchangeError("Missing Authorization header", status_code=401)
 
         logger.debug("Exchanging Entra ID token for Databricks token (target=%s)", self._url)
-        db_token = await self._exchanger.exchange(entra_token)
+        try:
+            db_token = await self._exchanger.exchange(entra_token)
+        except TokenExchangeError as exc:
+            status = exc.status_code
+            if status is not None and status in (400, 401):
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         # Pass db_token via auth= (not headers=) so that BearerAuth sets the
         # Authorization header per-request, overriding the incoming Entra token

@@ -16,6 +16,10 @@ _SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0
 
+# Only transient 5xx errors are retried. Permanent errors (501, 505, …) are
+# not expected from an OIDC token endpoint but are raised immediately if seen.
+_RETRIABLE_5XX = {500, 502, 503, 504}
+
 
 class TokenExchangeError(Exception):  # pylint: disable=too-few-public-methods
     def __init__(self, message: str, status_code: int | None = None) -> None:
@@ -62,25 +66,38 @@ class DatabricksTokenExchanger:  # pylint: disable=too-few-public-methods
             if resp.status_code in (400, 401):
                 # Client-side errors — no retry
                 error = _extract_error(resp)
-                logger.warning("Token exchange rejected: %s (status=%d)", error, resp.status_code)
+                logger.error("Token exchange rejected: %s (status=%d)", error, resp.status_code)
                 raise TokenExchangeError(
                     f"Token exchange failed: {error}",
                     status_code=resp.status_code,
                 )
 
-            if resp.status_code >= 500:
+            if resp.status_code in _RETRIABLE_5XX:
                 last_exc = TokenExchangeError(
                     f"Token exchange server error (status={resp.status_code})",
                     status_code=resp.status_code,
                 )
-                logger.warning(
+                logger.error(
                     "Token exchange server error %d (attempt %d/%d)",
                     resp.status_code,
                     attempt + 1,
                     _MAX_RETRIES,
                 )
-                await asyncio.sleep(_BACKOFF_BASE * (2**attempt))
+                retry_after = resp.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else _BACKOFF_BASE * (2**attempt)
+                await asyncio.sleep(wait)
                 continue
+
+            if resp.status_code >= 500:
+                # Non-retriable 5xx (e.g. 501 Not Implemented, 505 HTTP Version Not Supported)
+                error = _extract_error(resp)
+                logger.error(
+                    "Token exchange non-retriable error %d: %s", resp.status_code, error
+                )
+                raise TokenExchangeError(
+                    f"Token exchange failed (non-retriable): {error}",
+                    status_code=resp.status_code,
+                )
 
             try:
                 resp.raise_for_status()

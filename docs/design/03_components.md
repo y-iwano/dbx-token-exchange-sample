@@ -73,18 +73,22 @@ class Settings(BaseSettings):
 
 ```python
 def create_verifier(settings: Settings) -> AzureJWTVerifier:
-    return AzureJWTVerifier(
+    verifier = AzureJWTVerifier(
         client_id=settings.azure_client_id,
         tenant_id=settings.azure_tenant_id,
         required_scopes=settings.required_scopes,
         identifier_uri=settings.identifier_uri,
     )
+    # Accept both the app GUID and the identifier URI as valid audiences.
+    verifier.audience = [settings.azure_client_id, settings.identifier_uri]
+    return verifier
 ```
 
 **責務:**
 - `AzureJWTVerifier` インスタンスの生成のみ
 - 実際のトークン検証（署名・issuer・audience・expiry・scp）は FastMCP ライブラリが実施
-- JWKS URI・issuer・audience は `AzureJWTVerifier` が `azure_tenant_id` / `azure_client_id` から自動設定
+- JWKS URI・issuer は `AzureJWTVerifier` が `azure_tenant_id` から自動設定
+- `audience` はアプリ GUID と `identifier_uri` の両方を許容するよう明示的に設定する。Entra ID v2 アクセストークンは `identifier_uri` を `aud` に持つ場合があるため
 - `scopes_supported` プロパティが `identifier_uri` + `required_scopes` から完全形スコープ URI を自動生成
 
 ---
@@ -115,7 +119,9 @@ class DatabricksTokenExchanger:
 
 | 条件 | 動作 |
 |---|---|
-| 5xx / ネットワークエラー | 指数バックオフ（1s, 2s, 4s）で最大 3 回リトライ |
+| 500 / 502 / 503 / 504 / ネットワークエラー | 指数バックオフ（1s, 2s, 4s）で最大 3 回リトライ |
+| 503 かつ `Retry-After` ヘッダーあり | `Retry-After` の値（秒）を優先してスリープ |
+| 501 / 505 など一時的でない 5xx | リトライなし。即座に `TokenExchangeError` を raise |
 | 400 / 401 | リトライなし。即座に `TokenExchangeError` を raise |
 
 ### 例外定義
@@ -147,6 +153,12 @@ class DatabricksTokenExchangeTransport(ClientTransport):
            StreamableHttpTransport を生成してセッションを確立
         """
 ```
+
+**エラーハンドリング:**
+- `TokenExchangeError` は `HTTPException` に変換して raise する（FastMCP / Starlette がレスポンスに変換）
+  - `status_code` が 400 / 401 の場合 → `HTTPException(502)` （Databricks 側の設定ミス等、クライアント起因）
+  - それ以外（500 系・ネットワークエラー等）→ `HTTPException(503)`
+- `Missing Authorization header` の場合は `TokenExchangeError(status_code=401)` のまま raise（FastMCP が 401 を返す）
 
 **設計ポイント:**
 - セッションごとに新しい `StreamableHttpTransport` を生成するため、トークンの競合が発生しない
