@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -62,6 +63,11 @@ class Settings(BaseSettings):
     # Application ID URI of the Entra App Registration (used to prefix scopes
     # in OAuth metadata). Defaults to api://<azure_client_id>.
     identifier_uri: str = ""
+
+    # Entra ID access token version accepted by this server: "1" or "2" (default: "2").
+    # "1" tokens are issued by the v1 authorization endpoint (iss: sts.windows.net).
+    # "2" tokens are issued by the v2 authorization endpoint (iss: login.microsoftonline.com/v2.0).
+    entra_version: Literal["1", "2"] = "2"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

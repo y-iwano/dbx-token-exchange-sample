@@ -12,6 +12,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 from app.auth.entra import create_verifier
+from app.auth.entra_v1 import create_verifier_v1
 from app.auth.token_exchange import DatabricksTokenExchanger
 from app.config import Settings
 from app.proxy.transport import DatabricksTokenExchangeTransport
@@ -29,13 +30,23 @@ def build_app(settings: Settings) -> FastMCP:  # pylint: disable=redefined-outer
     Result: a single ``/mcp`` endpoint that exposes all configured Databricks
     Managed MCP servers with their tools namespaced as ``{name}_{tool}``.
     """
-    verifier = create_verifier(settings)
+    if settings.entra_version == "1":
+        verifier = create_verifier_v1(settings)
+        # v1 authorization endpoint (no /v2.0 suffix)
+        authorization_server = (
+            f"https://login.microsoftonline.com/{settings.azure_tenant_id}"
+        )
+    else:
+        verifier = create_verifier(settings)
+        # v2 authorization endpoint
+        authorization_server = (
+            f"https://login.microsoftonline.com/{settings.azure_tenant_id}/v2.0"
+        )
+
     auth = RemoteAuthProvider(
         token_verifier=verifier,
         # Tell MCP clients where to obtain Entra ID tokens
-        authorization_servers=[
-            f"https://login.microsoftonline.com/{settings.azure_tenant_id}/v2.0"
-        ],
+        authorization_servers=[authorization_server],
         base_url=settings.base_url,
         # Scopes advertised to MCP clients. Configured via OAUTH_SCOPES in .env.
         # Defaults to ["openid", "api://<azure_client_id>/access"] if not set.

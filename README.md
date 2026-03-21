@@ -1,5 +1,7 @@
 # Databricks Token Exchange MCP Proxy
 
+[English version](README.en.md)
+
 Entra ID で認証済みの MCP クライアント（ChatGPT / Claude Desktop など）が、[Databricks Managed MCP](https://docs.databricks.com/aws/ja/generative-ai/mcp/managed-mcp) のツールを利用できるようにする MCP プロキシサーバー。
 
 クライアントが提示した Entra ID Bearer トークンを受け取り、[OAuth Token Exchange (RFC 8693)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange) で Databricks アクセストークンに交換してからバックエンドに転送する。
@@ -229,6 +231,7 @@ uv run pylint src/app   # lint チェック
 | `OAUTH_SCOPES`     | —   | —  | MCP クライアントに公開する OAuth スコープ一覧（JSON 配列）（例: `["openid", "https://your-domain.com/mcp/access"]`） |
 | `REQUIRED_SCOPES`  | —   | —  | 受信トークンの `scp` クレームに必要なスコープ名（短縮形）。未設定時は `scp` 検証をスキップ（例: `["access"]`） |
 | `IDENTIFIER_URI`   | —   | —  | Entra ID App Registration の Application ID URI（例: `https://your-domain.com/mcp`） |
+| `ENTRA_VERSION`    | —   | `"2"` | 受け入れる Entra ID トークンのバージョン（`"1"` または `"2"`）。`"1"` は issuer が `sts.windows.net` の v1 トークン、`"2"` は `login.microsoftonline.com/.../v2.0` の v2 トークン |
 
 
 `.env` に余分な変数があっても無視される（`extra="ignore"`）。

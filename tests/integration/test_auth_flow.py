@@ -29,3 +29,13 @@ async def test_token_exchange_with_invalid_token(int_settings):
             await exchanger.exchange("this-is-not-a-valid-jwt")
 
     assert exc_info.value.status_code in (400, 401)
+
+
+async def test_token_exchange_with_valid_entra_token_v1(int_settings, entra_token_v1):
+    """Valid Entra ID v1 access token is exchanged for a Databricks access token."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        exchanger = DatabricksTokenExchanger(int_settings, client)
+        db_token = await exchanger.exchange(entra_token_v1)
+
+    assert isinstance(db_token, str)
+    assert len(db_token) > 0

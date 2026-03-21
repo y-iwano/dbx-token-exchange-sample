@@ -93,6 +93,95 @@ def create_verifier(settings: Settings) -> AzureJWTVerifier:
 
 ---
 
+## `auth/entra_v1.py` — Entra ID v1 トークン検証
+
+### v1 と v2 の違い
+
+Entra ID アクセストークンにはエンドポイントバージョンに応じて 2 種類のフォーマットがある。
+
+| クレーム | v1 | v2 |
+|---|---|---|
+| `iss` | `https://sts.windows.net/{tenant_id}/` | `https://login.microsoftonline.com/{tenant_id}/v2.0` |
+| `aud` | `identifier_uri` のみ（アプリ GUID は含まれない） | `identifier_uri` または アプリ GUID |
+| `ver` | `"1.0"` | `"2.0"` |
+| `scp` | スペース区切りのスコープ短縮名（v2 と同形式） | 同左 |
+| JWKS URI | `https://login.microsoftonline.com/{tenant_id}/discovery/keys` | `https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys` |
+| Discovery | `https://login.microsoftonline.com/{tenant_id}/.well-known/openid-configuration` | `https://login.microsoftonline.com/{tenant_id}/v2.0/.well-known/openid-configuration` |
+
+`AzureJWTVerifier` は v2 エンドポイントを前提とした issuer・JWKS URI を自動設定するため、v1 トークンを受け入れるには 3 つのプロパティを明示的に上書きする必要がある。
+
+### 実装
+
+```python
+def create_verifier_v1(settings: Settings) -> AzureJWTVerifier:
+    """Create an AzureJWTVerifier configured to validate Entra ID v1 access tokens.
+
+    v1 tokens are issued by the v1 authorization endpoint and differ from v2 in:
+    - iss: https://sts.windows.net/{tenant_id}/  (not login.microsoftonline.com/.../v2.0)
+    - aud: identifier_uri only  (app GUID is NOT a valid audience in v1)
+    - JWKS URI: v1 discovery endpoint  (no /v2.0/ path segment)
+    """
+    verifier = AzureJWTVerifier(
+        client_id=settings.azure_client_id,
+        tenant_id=settings.azure_tenant_id,
+        required_scopes=settings.required_scopes,
+        identifier_uri=settings.identifier_uri,
+    )
+    # v1 issuer: sts.windows.net (AzureJWTVerifier defaults to login.microsoftonline.com/v2.0)
+    verifier.issuer = f"https://sts.windows.net/{settings.azure_tenant_id}/"
+
+    # v1 tokens carry identifier_uri as aud; app GUID is NOT included.
+    verifier.audience = [settings.identifier_uri]
+
+    # v1 JWKS endpoint (without /v2.0/ path segment)
+    verifier.jwks_uri = (
+        f"https://login.microsoftonline.com/{settings.azure_tenant_id}/discovery/keys"
+    )
+    return verifier
+```
+
+**責務:**
+- `AzureJWTVerifier` インスタンスの生成と、v1 向けの 3 プロパティ上書きのみ
+- 実際のトークン検証（署名・issuer・audience・expiry・scp）は FastMCP ライブラリが実施
+- `scp` クレームの構造は v2 と同一のため、`required_scopes` の扱いは変わらない
+
+### `main.py` での切り替え
+
+環境変数 `ENTRA_VERSION`（`"1"` / `"2"`、デフォルト `"2"`）で使用する verifier を切り替える。
+
+**`config.py` への追加:**
+
+```python
+class Settings(BaseSettings):
+    ...
+    # Entra ID token version to accept: "1" or "2" (default: "2")
+    entra_version: Literal["1", "2"] = "2"
+```
+
+**`main.py` での利用:**
+
+```python
+from app.auth.entra import create_verifier
+from app.auth.entra_v1 import create_verifier_v1
+
+def build_app(settings: Settings) -> FastMCP:
+    verifier = (
+        create_verifier_v1(settings)
+        if settings.entra_version == "1"
+        else create_verifier(settings)
+    )
+    ...
+```
+
+### 注意事項
+
+- v1 と v2 のトークンを **同時に** 受け入れることはしない。クライアントが発行するトークンのバージョンを確認し、環境変数で明示的に指定すること
+- v1 トークンの `aud` にはアプリ GUID が含まれないため、`entra.py` のように `azure_client_id` を `audience` に追加してはならない
+- Entra ID v1 エンドポイントは `api://{client_id}` スコープ形式をサポートする。`identifier_uri` を `api://{azure_client_id}` に設定した場合、v1 トークンの `aud` も `api://{azure_client_id}` になる
+- ChatGPT / Claude.ai などの外部 MCP クライアントは v2 エンドポイントを使用するのが一般的。v1 が必要になるのは社内システムや旧来の Azure AD 設定を変更できないケースに限られる
+
+---
+
 ## `auth/token_exchange.py` — Databricks トークン交換
 
 ### クラス: `DatabricksTokenExchanger`

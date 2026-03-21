@@ -60,3 +60,50 @@ async def test_tools_list_multiple_backends(proxy_url, entra_token, int_settings
             f"No tools with namespace '{server_cfg.name}' found. "
             f"Available tools: {tool_names}"
         )
+
+
+async def test_v1_token_rejected_by_v2_proxy(proxy_url, entra_token_v1):
+    """v1 token is rejected by a proxy configured with the v2 verifier."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as http:
+        resp = await http.post(
+            f"{proxy_url}/mcp",
+            json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+            headers={
+                "Authorization": f"Bearer {entra_token_v1}",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+    assert resp.status_code == 401
+
+
+async def test_tools_list_with_v1_token(proxy_url_v1, entra_token_v1, int_settings):
+    """Valid Entra ID v1 token returns tool list via the v1 proxy."""
+    async with asyncio.timeout(_TIMEOUT):
+        async with Client(f"{proxy_url_v1}/mcp", auth=entra_token_v1) as client:
+            tools = await client.list_tools()
+
+    assert len(tools) > 0
+
+    tool_names = [t.name for t in tools]
+    configured_namespaces = [s.name for s in int_settings.mcp_servers]
+    assert any(
+        name.startswith(f"{ns}_")
+        for name in tool_names
+        for ns in configured_namespaces
+    ), f"Expected tools with namespace prefix, got: {tool_names}"
+
+
+async def test_v2_token_rejected_by_v1_proxy(proxy_url_v1, entra_token):
+    """v2 token is rejected by a proxy configured with the v1 verifier."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as http:
+        resp = await http.post(
+            f"{proxy_url_v1}/mcp",
+            json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+            headers={
+                "Authorization": f"Bearer {entra_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+    assert resp.status_code == 401

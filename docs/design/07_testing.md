@@ -14,10 +14,13 @@ tests/
     test_config.py           # 設定バリデーションテスト
     test_token_exchange.py   # DatabricksTokenExchanger のモックテスト
     test_transport.py        # DatabricksTokenExchangeTransport のモックテスト
+    test_entra_v1.py         # create_verifier_v1 の単体テスト
   integration/
+    conftest.py              # integration テスト専用フィクスチャ
     test_auth_flow.py        # Entra ID → Databricks token exchange の疎通テスト
     test_mcp_proxy.py        # Databricks Managed MCP への転送テスト
-  conftest.py                # 共通フィクスチャ
+    test_entra_v1.py         # v1 verifier の疎通テスト
+  conftest.py                # 共通フィクスチャ（Settings, valid_env）
 ```
 
 ---
@@ -53,34 +56,6 @@ tests/
 | 502 / 503 / 504 エラー（1 回後に成功） | リトライ後に `access_token` が返る |
 | 503 + `Retry-After: 5` ヘッダー | `asyncio.sleep(5.0)` が呼ばれる（指数バックオフより優先） |
 
-```python
-import respx, httpx, pytest
-from app.auth.token_exchange import DatabricksTokenExchanger, TokenExchangeError
-
-@pytest.fixture
-def exchanger(settings):
-    async with httpx.AsyncClient() as client:
-        yield DatabricksTokenExchanger(settings, client)
-
-@respx.mock
-async def test_exchange_success(exchanger):
-    respx.post("https://host/oidc/v1/token").respond(
-        200, json={"access_token": "dbx-token", "token_type": "Bearer"}
-    )
-    token = await exchanger.exchange("entra-token")
-    assert token == "dbx-token"
-
-@respx.mock
-async def test_exchange_400_no_retry(exchanger):
-    respx.post("https://host/oidc/v1/token").respond(
-        400, json={"error": "invalid_grant"}
-    )
-    with pytest.raises(TokenExchangeError) as exc:
-        await exchanger.exchange("bad-token")
-    assert exc.value.status_code == 400
-    assert respx.calls.call_count == 1  # リトライなし
-```
-
 ### `test_transport.py`
 
 `DatabricksTokenExchangeTransport.connect_session` のテスト。
@@ -90,50 +65,28 @@ async def test_exchange_400_no_retry(exchanger):
 | テストケース | 検証内容 |
 |---|---|
 | 正常フロー | Entra トークンが取得され、交換後の Databricks トークンが `StreamableHttpTransport` の Authorization ヘッダーにセットされる |
-| Authorization ヘッダーなし | `TokenExchangeError` が raise される |
+| Authorization ヘッダーなし | `TokenExchangeError(status_code=401)` が raise される |
 | `Bearer ` プレフィックスの除去 | 大文字・小文字どちらの `bearer ` も正しく除去される |
 | `exchange()` が 400 / 401 の `TokenExchangeError` を raise した場合 | `HTTPException(502)` に変換される |
 | `exchange()` が 500 / 503 / なし の `TokenExchangeError` を raise した場合 | `HTTPException(503)` に変換される |
 
-```python
-from unittest.mock import AsyncMock, patch, MagicMock
-import pytest
-from app.proxy.transport import DatabricksTokenExchangeTransport
-from app.auth.token_exchange import TokenExchangeError
+### `test_entra_v1.py`
 
-async def test_connect_session_sets_databricks_token(settings):
-    exchanger = AsyncMock()
-    exchanger.exchange.return_value = "dbx-token"
+`create_verifier_v1` が返す `AzureJWTVerifier` のプロパティを検証する。
+外部への HTTP リクエストは不要。
 
-    transport = DatabricksTokenExchangeTransport(
-        url="https://host/api/2.0/mcp/sql",
-        exchanger=exchanger,
-    )
-
-    mock_session = MagicMock()
-
-    with (
-        patch("app.proxy.transport.get_http_headers",
-              return_value={"authorization": "Bearer entra-token"}),
-        patch("fastmcp.client.transports.StreamableHttpTransport.connect_session",
-              return_value=async_context(mock_session)),
-    ):
-        async with transport.connect_session() as session:
-            assert session is mock_session
-
-    exchanger.exchange.assert_awaited_once_with("entra-token")
-
-async def test_missing_auth_header_raises(settings):
-    exchanger = AsyncMock()
-    transport = DatabricksTokenExchangeTransport("https://host/api/2.0/mcp/sql", exchanger)
-
-    with (
-        patch("app.proxy.transport.get_http_headers", return_value={}),
-        pytest.raises(TokenExchangeError),
-    ):
-        async with transport.connect_session():
-            pass
-```
+| テストケース | 検証内容 |
+|---|---|
+| `issuer` が `sts.windows.net` | v1 issuer が正しくセットされている |
+| `jwks_uri` に `/v2.0/` が含まれない | v1 JWKS エンドポイントが使われている |
+| `audience` に `identifier_uri` が含まれる | v1 audience が正しくセットされている |
+| `audience` に `azure_client_id`（GUID）が含まれない | v1 では GUID を audience に含めない |
+| カスタム `IDENTIFIER_URI` 設定時 | `audience` がカスタム URI のみになる |
+| `REQUIRED_SCOPES` が設定されている場合 | verifier に `required_scopes` が引き継がれる |
+| `REQUIRED_SCOPES` が未設定の場合 | `required_scopes` が空になる（`None` ではない） |
+| v1 と v2 の `issuer` 比較 | v1 が `sts.windows.net`、v2 が `login.microsoftonline.com` |
+| v1 と v2 の `jwks_uri` 比較 | v1 に `/v2.0/` なし、v2 にあり |
+| v1 と v2 の `audience` 比較 | v1 は GUID を含まず、v2 は含む |
 
 ---
 
@@ -146,10 +99,16 @@ async def test_missing_auth_header_raises(settings):
 `ENTRA_ACCESS_TOKEN` を `.env` に設定する必要がある。`scripts/get_entra_token.py` を使うと Device Code Flow で取得して `.env` に自動書き込みできる。
 
 ```bash
+# v2 トークン（デフォルト） → ENTRA_ACCESS_TOKEN に保存
 uv run python scripts/get_entra_token.py
+
+# v1 トークン → ENTRA_ACCESS_TOKEN_V1 に保存
+uv run python scripts/get_entra_token.py --version 1
 ```
 
-ブラウザで `https://microsoft.com/devicelogin` を開き、表示されたコードを入力するとトークンが取得され `.env` の `ENTRA_ACCESS_TOKEN` に書き込まれる。トークンの有効期限は約 1 時間。
+v1 トークンを取得するには、App Registration のマニフェストで `"requestedAccessTokenVersion": null` または `1` に設定しておく必要がある。
+
+v1 app の App ID URI が v2 と異なる場合は `.env` に `TEST_IDENTIFIER_URI_V1` を設定すること。
 
 **前提（初回のみ）:** Azure Portal → App Registration → Authentication → **「Allow public client flows」を ON** にすること。
 
@@ -162,20 +121,43 @@ pytestmark = pytest.mark.skipif(
 )
 ```
 
+### `conftest.py`（integration 専用フィクスチャ）
+
+| フィクスチャ | 内容 |
+|---|---|
+| `int_settings` | `.env` から実際の `Settings` を読み込む |
+| `entra_token` | `ENTRA_ACCESS_TOKEN`（v2）を読み込む。未設定時は skip |
+| `entra_token_v1` | `ENTRA_ACCESS_TOKEN_V1`（v1）を読み込む。未設定時は skip |
+| `identifier_uri_v1` | `TEST_IDENTIFIER_URI_V1` を読み込む。未設定時は `identifier_uri` にフォールバック |
+| `proxy_url` | v2 verifier でプロキシサーバーを起動し、URL を返す |
+| `proxy_url_v1` | v1 verifier でプロキシサーバーを起動し、URL を返す |
+
 ### `test_auth_flow.py`
 
 | テストケース | 検証内容 |
 |---|---|
-| MSAL Authorization Code Flow で取得した Entra ID トークンが token exchange に成功する | Databricks アクセストークンが返る |
-| 無効なトークンで token exchange が失敗する | `TokenExchangeError` が raise される |
+| v2 Entra ID トークンで token exchange が成功する | Databricks アクセストークンが返る |
+| 無効なトークンで token exchange が失敗する | `TokenExchangeError` が raise される（`status_code` が 400 または 401） |
+| v1 Entra ID トークンで token exchange が成功する | Databricks アクセストークンが返る |
+
+### `test_entra_v1.py`（integration）
+
+| テストケース | 検証内容 |
+|---|---|
+| v1 トークンが v1 verifier に受理される | `verify_token()` が `None` 以外を返す |
+| 不正なトークンが v1 verifier に拒否される | `verify_token()` が `None` を返す |
+| v2 トークンが v1 verifier に拒否される | issuer / audience 不一致により `None` が返る |
 
 ### `test_mcp_proxy.py`
 
 | テストケース | 検証内容 |
 |---|---|
-| サーバー起動後、MCP クライアントで `tools/list` が取得できる | 設定した `name` がプレフィックスのツールが返る |
-| 複数バックエンド設定時、全サーバーのツールが単一エンドポイントから取得できる | 各 `name_*` ツールが混在して返る |
-| 無効な Bearer トークンで MCP リクエストが 401 になる | 認証エラーが返る |
+| 無効な Bearer トークンで 401 になる | 認証エラーが返る |
+| v2 トークンで tools/list が取得できる | 設定した `name` がプレフィックスのツールが返る |
+| 複数バックエンド設定時、全サーバーのツールが取得できる | 各 `name_*` ツールが混在して返る |
+| v1 トークンが v2 プロキシに拒否される | 401 が返る |
+| v1 トークンで tools/list が取得できる（v1 プロキシ） | 設定した `name` がプレフィックスのツールが返る |
+| v2 トークンが v1 プロキシに拒否される | 401 が返る |
 
 ---
 

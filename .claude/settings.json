@@ -35,7 +35,12 @@
       "Bash(databricks api:*)",
       "Bash(DATABRICKS_HOST=https://dbc-df588290-eedc.cloud.databricks.com databricks auth login)",
       "Bash(python -c \"import inspect; from fastmcp.server.auth.providers.azure import AzureJWTVerifier; print\\(inspect.getsource\\(AzureJWTVerifier\\)\\)\")",
-      "Bash(python -c \"import inspect; from fastmcp.server.auth.providers.jwt import JWTVerifier; print\\(inspect.getsource\\(JWTVerifier.__init__\\)\\)\")"
+      "Bash(python -c \"import inspect; from fastmcp.server.auth.providers.jwt import JWTVerifier; print\\(inspect.getsource\\(JWTVerifier.__init__\\)\\)\")",
+      "Bash(python -c \"from fastmcp.server.auth.providers.azure import AzureJWTVerifier; import inspect; print\\(inspect.getsource\\(AzureJWTVerifier\\)\\)\")",
+      "Bash(python -c \"from fastmcp.server.auth.providers.jwt import JWTVerifier; import inspect; print\\(inspect.getsource\\(JWTVerifier\\)\\)\")",
+      "Bash(python -c \"from fastmcp.server.auth.providers.jwt import JWTVerifier; import inspect; src = inspect.getsource\\(JWTVerifier\\); print\\(src[3000:]\\)\")",
+      "Bash(python -c \"from fastmcp.server.auth import TokenVerifier; import inspect; src = inspect.getsource\\(TokenVerifier\\); print\\(src\\)\")",
+      "Bash(INTEGRATION_TESTS=true uv run pytest tests/integration/test_entra_v1.py tests/integration/test_mcp_proxy.py -v --no-cov)"
     ],
     "additionalDirectories": [
       "/Users/khronov/.npm/_npx/5a9d879542beca3a"
