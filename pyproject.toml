@@ -18,6 +18,10 @@ dev = [
     "pytest-cov>=5.0",
     "msal>=1.35.1",
     "python-dotenv>=1.2.2",
+    "bandit>=1.9.4",
+    "detect-secrets>=1.5.0",
+    "pip-audit>=2.10.0",
+    "pre-commit>=4.5.1",
 ]
 
 [build-system]
@@ -49,6 +53,9 @@ disable = [
     "missing-class-docstring",
     "missing-function-docstring",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
 
 [tool.uv]
 package = true

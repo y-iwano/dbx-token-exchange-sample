@@ -10,7 +10,7 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 _GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
-_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
+_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"  # nosec B105
 
 # Retry config: up to 3 attempts with exponential backoff (1 s, 2 s, 4 s)
 _MAX_RETRIES = 3

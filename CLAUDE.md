@@ -40,6 +40,20 @@ uv run pytest                     # unit テストのみ（カバレッジレポ
 uv run pytest tests/integration/  # integration テスト（.env 設定必要）
 uv run pytest --no-cov            # カバレッジなしでテスト実行
 uv run pylint src/app             # lint チェック
+uv run bandit -r src/app          # セキュリティ静的解析
+uv run pip-audit                  # 依存パッケージの脆弱性スキャン
+uv run detect-secrets scan --exclude-files '\.env$' > .secrets.baseline  # シークレットベースライン更新
 ```
 
 カバレッジレポートは `htmlcov/index.html` に出力される。
+
+## Security Checks
+
+| ツール | 目的 | 実行タイミング |
+|---|---|---|
+| `bandit` | Python コードの静的セキュリティ解析 | 開発時・CI |
+| `pip-audit` | 依存パッケージの既知脆弱性スキャン | 開発時・CI |
+| `detect-secrets` | シークレットの誤コミット防止 | pre-commit フック |
+| `pre-commit` | コミット前の自動チェック実行基盤 | commit 時 |
+
+pre-commit フックは `uv run pre-commit install` で有効化済み。`.secrets.baseline` はコミット対象に含める。
