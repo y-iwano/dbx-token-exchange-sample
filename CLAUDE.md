@@ -42,7 +42,7 @@ uv run pytest --no-cov            # カバレッジなしでテスト実行
 uv run pylint src/app             # lint チェック
 uv run bandit -r src/app          # セキュリティ静的解析
 uv run pip-audit                  # 依存パッケージの脆弱性スキャン
-uv run detect-secrets scan --exclude-files '\.env$' > .secrets.baseline  # シークレットベースライン更新
+.venv/bin/detect-secrets scan --exclude-files '\.env$' > .secrets.baseline  # シークレットベースライン更新（uv run は出力が混入するため直接実行）
 ```
 
 カバレッジレポートは `htmlcov/index.html` に出力される。
