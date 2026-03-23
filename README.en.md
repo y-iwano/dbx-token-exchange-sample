@@ -41,7 +41,7 @@ Azure Portal → **Microsoft Entra ID** → **App registrations** → **New regi
 
 > **About App ID URI:** When MCP Inspector or other clients run the OAuth flow, Entra ID requires that the `resource` parameter and the scopes point to the same App ID URI. Since `BASE_URL/mcp` is sent as `resource`, setting the App ID URI to `BASE_URL/mcp` (e.g. `https://your-domain.com/mcp`) and assigning the same value to the `IDENTIFIER_URI` environment variable keeps everything consistent.
 
-#### 1-2. Set the token version (required when using `ENTRA_VERSION=2`)
+#### 1-2. Set the token version to v2.0 (optional)
 
 **"Manifest"** tab → edit JSON
 
@@ -49,7 +49,7 @@ Azure Portal → **Microsoft Entra ID** → **App registrations** → **New regi
 "requestedAccessTokenVersion": 2
 ```
 
-> Skip this step if you intend to use `ENTRA_VERSION=1` (v1 tokens). For v1, set `requestedAccessTokenVersion` to `null` or `1`.
+> If not set, v1.0 tokens (issuer: `sts.windows.net`) will be issued. To accept v1 tokens, set `ENTRA_VERSION=1` instead of changing this setting.
 
 #### 1-3. Add optional claims (`email` claim, if needed)
 
@@ -83,7 +83,7 @@ Account Console → **Security** → **Authentication** → **Federation policie
 
 | Field | Value |
 |---|---|
-| Issuer | `https://login.microsoftonline.com/<AZURE_TENANT_ID>/v2.0` (for v2) or `https://sts.windows.net/<AZURE_TENANT_ID>/` (for v1) |
+| Issuer | v2: `https://login.microsoftonline.com/<AZURE_TENANT_ID>/v2.0` / v1: `https://sts.windows.net/<AZURE_TENANT_ID>/` |
 | Audiences | The value of the `aud` claim in the Entra ID token (e.g. `api://<AZURE_CLIENT_ID>` or `<AZURE_CLIENT_ID>`) |
 | Subject claim | `email` (or `sub`) |
 
@@ -223,7 +223,7 @@ uv run pylint src/app   # lint check
 | `OAUTH_SCOPES` | — | — | OAuth scopes advertised to MCP clients (JSON array, e.g. `["openid", "https://your-domain.com/mcp/access"]`) |
 | `REQUIRED_SCOPES` | — | — | Short-form scope names required in incoming token `scp` claims. If not set, `scp` validation is skipped (e.g. `["access"]`) |
 | `IDENTIFIER_URI` | — | `api://<AZURE_CLIENT_ID>` | Application ID URI of the Entra App Registration (e.g. `https://your-domain.com/mcp`) |
-| `ENTRA_VERSION` | — | `"2"` | Entra ID token version to accept (`"1"` or `"2"`). `"1"` accepts tokens with issuer `sts.windows.net`; `"2"` accepts tokens with issuer `login.microsoftonline.com/.../v2.0` |
+| `ENTRA_VERSION` | — | `"2"` | Entra ID endpoint version (`"1"` or `"2"`). Switches both **token verification** (issuer / JWKS URI / audience) and the **authorization server URL advertised to MCP clients**. v1: `sts.windows.net` issuer, endpoint without `/v2.0`; v2: `login.microsoftonline.com/.../v2.0` issuer, endpoint with `/v2.0` |
 
 Extra variables in `.env` are silently ignored (`extra="ignore"`).
 

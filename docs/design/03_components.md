@@ -147,7 +147,10 @@ def create_verifier_v1(settings: Settings) -> AzureJWTVerifier:
 
 ### `main.py` での切り替え
 
-環境変数 `ENTRA_VERSION`（`"1"` / `"2"`、デフォルト `"2"`）で使用する verifier を切り替える。
+環境変数 `ENTRA_VERSION`（`"1"` / `"2"`、デフォルト `"2"`）は以下の **2 つの動作** を同時に切り替える。
+
+1. **トークン検証 verifier** — 受け入れる issuer・JWKS エンドポイント・audience が異なる
+2. **認可サーバーエンドポイント** — MCP クライアントにトークン取得先として通知する URL。v1 は `/v2.0` なし、v2 は `/v2.0` あり
 
 **`config.py` への追加:**
 
@@ -165,12 +168,20 @@ from app.auth.entra import create_verifier
 from app.auth.entra_v1 import create_verifier_v1
 
 def build_app(settings: Settings) -> FastMCP:
-    verifier = (
-        create_verifier_v1(settings)
-        if settings.entra_version == "1"
-        else create_verifier(settings)
+    if settings.entra_version == "1":
+        verifier = create_verifier_v1(settings)
+        # v1 authorization endpoint (no /v2.0 suffix)
+        authorization_server = f"https://login.microsoftonline.com/{settings.azure_tenant_id}"
+    else:
+        verifier = create_verifier(settings)
+        # v2 authorization endpoint
+        authorization_server = f"https://login.microsoftonline.com/{settings.azure_tenant_id}/v2.0"
+
+    auth = RemoteAuthProvider(
+        token_verifier=verifier,
+        authorization_servers=[authorization_server],
+        ...
     )
-    ...
 ```
 
 ### 注意事項

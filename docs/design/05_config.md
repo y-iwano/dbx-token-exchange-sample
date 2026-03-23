@@ -13,6 +13,7 @@
 | `OAUTH_SCOPES` | — | — | MCP クライアントに公開する OAuth スコープ一覧（JSON 配列）（例: `["openid", "https://your-domain.com/mcp/access"]`） |
 | `REQUIRED_SCOPES` | — | — | 受信トークンの `scp` クレームに必要なスコープ名（短縮形。Azure Portal「API の公開」で定義した名前と一致させること）。未設定時は `scp` 検証をスキップ（例: `["access"]`） |
 | `IDENTIFIER_URI` | — | — | Entra ID App Registration の Application ID URI。OAuth メタデータのスコープ URI 生成に使用（例: `https://your-domain.com/mcp`） |
+| `ENTRA_VERSION` | — | `"2"` | Entra ID のエンドポイントバージョン（`"1"` または `"2"`）。**トークン検証**（issuer / JWKS URI / audience）と **認可サーバーエンドポイント**（MCP クライアントに通知する URL）の両方を切り替える。v1: `sts.windows.net` issuer・`/v2.0` なしエンドポイント、v2: `login.microsoftonline.com/.../v2.0` issuer・`/v2.0` ありエンドポイント |
 
 ## `MCP_SERVERS` 仕様
 
@@ -130,7 +131,7 @@ MCP Inspector は保護リソースメタデータの `resource` フィールド
 
 | 設定項目 | 値 |
 |---|---|
-| `accessTokenAcceptedVersion` (Manifest) | `2`（必須。v2.0 トークンを発行するため） |
+| `accessTokenAcceptedVersion` (Manifest) | `2`（`ENTRA_VERSION=2` の場合）/ `null` または `1`（`ENTRA_VERSION=1` の場合） |
 | API の公開 / スコープ | `access`（任意の名前）を定義 |
 | リダイレクト URI | 不要（サーバーが OAuth フローを持たないため） |
 | クライアントシークレット | 不要（サーバーは検証のみ行うため） |

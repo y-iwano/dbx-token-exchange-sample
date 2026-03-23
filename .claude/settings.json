@@ -44,7 +44,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f''''Secrets found: {sum\\(len\\(v\\) for v in d[\"\"results\"\"].values\\(\\)\\)} \\(expected 0\\)''''\\)\")",
       "Bash(python3 -m json.tool /Users/khronov/Labs/Databricks/dbx-token-exchange-sample/.secrets.baseline)",
       "Bash(.venv/bin/detect-secrets scan:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(curl -s https://dbx-token-exchange.yiwano-demo.net/.well-known/oauth-protected-resource)",
+      "Bash(curl -sv https://dbx-token-exchange.yiwano-demo.net/.well-known/oauth-protected-resource)",
+      "Bash(curl -s https://dbx-token-exchange.yiwano-demo.net/mcp -v)",
+      "Bash(curl -s https://dbx-token-exchange.yiwano-demo.net/.well-known/oauth-protected-resource/mcp)"
     ],
     "additionalDirectories": [
       "/Users/khronov/.npm/_npx/5a9d879542beca3a"
