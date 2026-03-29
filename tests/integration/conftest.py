@@ -11,6 +11,7 @@ from fastmcp.server.auth import RemoteAuthProvider
 from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 
 from app.auth.entra_v1 import create_verifier_v1
+from app.auth.token_cache import InMemoryTokenCache
 from app.auth.token_exchange import DatabricksTokenExchanger
 from app.config import Settings
 from app.main import build_app
@@ -110,7 +111,7 @@ async def proxy_url_v1(int_settings, identifier_uri_v1):
         yield
         await http_client.aclose()
 
-    exchanger = DatabricksTokenExchanger(int_settings, http_client)
+    exchanger = DatabricksTokenExchanger(int_settings, http_client, InMemoryTokenCache())
     main = FastMCP("DBX Token Exchange Proxy (v1)", auth=auth, lifespan=lifespan)
 
     for server_config in int_settings.mcp_servers:

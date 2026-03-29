@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
+import time
 
 import httpx
 
+from app.auth.token_cache import DatabricksTokenCache
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -28,22 +32,48 @@ class TokenExchangeError(Exception):  # pylint: disable=too-few-public-methods
 
 
 class DatabricksTokenExchanger:  # pylint: disable=too-few-public-methods
-    """Exchanges an Entra ID access token for a Databricks access token via RFC 8693."""
+    """Exchanges an Entra ID access token for a Databricks access token via RFC 8693.
 
-    def __init__(self, settings: Settings, http_client: httpx.AsyncClient) -> None:
+    Successful exchanges are cached by the ``sub`` claim of the Entra ID JWT.
+    Subsequent calls for the same user return the cached token until it expires.
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: httpx.AsyncClient,
+        cache: DatabricksTokenCache,
+    ) -> None:
         self._settings = settings
         self._http_client = http_client
+        self._cache = cache
         self._token_url = f"{settings.databricks_host}/oidc/v1/token"
 
     async def exchange(self, entra_token: str) -> str:
         """Exchange *entra_token* for a Databricks access token.
 
+        The ``sub`` claim is extracted from the Entra ID JWT (without re-verification,
+        as FastMCP has already validated the signature) and used as the cache key.
+
         Returns:
             Databricks access token string.
 
         Raises:
-            TokenExchangeError: On authentication failure or exhausted retries.
+            TokenExchangeError: If the sub claim is missing, authentication fails,
+                or all retries are exhausted.
         """
+        sub = _extract_sub(entra_token)
+        if sub is None:
+            raise TokenExchangeError(
+                "Unable to extract sub claim from Entra ID token",
+                status_code=401,
+            )
+
+        cached = self._cache.get(sub)
+        if cached is not None:
+            logger.debug("Token cache hit")
+            return cached
+
         data = {
             "grant_type": _GRANT_TYPE,
             "subject_token": entra_token,
@@ -101,13 +131,42 @@ class DatabricksTokenExchanger:  # pylint: disable=too-few-public-methods
 
             try:
                 resp.raise_for_status()
-                token: str = resp.json()["access_token"]
+                body = resp.json()
+                token: str = body["access_token"]
+                expires_at = (
+                    time.time()
+                    + body.get("expires_in", 3600)
+                    - self._settings.dbx_token_cache_ttl_buffer
+                )
+                await self._cache.set(sub, token, expires_at)
                 logger.debug("Token exchange succeeded")
                 return token
             except (KeyError, ValueError) as exc:
                 raise TokenExchangeError(f"Unexpected token exchange response: {exc}") from exc
 
         raise last_exc or TokenExchangeError("Token exchange failed after retries")
+
+
+def _extract_sub(entra_token: str) -> str | None:
+    """Extract the ``sub`` claim from a JWT payload without signature verification.
+
+    The token has already been verified by FastMCP's ``AzureJWTVerifier``.
+    Only the Base64url-encoded payload segment is decoded here.
+
+    Returns ``None`` if the token is malformed or the claim is absent/empty.
+    """
+    try:
+        parts = entra_token.split(".")
+        if len(parts) != 3:
+            return None
+        # Restore base64url padding
+        rem = len(parts[1]) % 4
+        padded = parts[1] + "=" * (4 - rem if rem else 0)
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+        sub = payload.get("sub")
+        return sub if isinstance(sub, str) and sub else None
+    except Exception:  # pylint: disable=broad-except
+        return None
 
 
 def _extract_error(resp: httpx.Response) -> str:

@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # "2" tokens are issued by the v2 authorization endpoint (iss: login.microsoftonline.com/v2.0).
     entra_version: Literal["1", "2"] = "2"
 
+    # Safety margin (seconds) subtracted from expires_in when caching Databricks tokens.
+    # expires_at = time.time() + expires_in - dbx_token_cache_ttl_buffer
+    # Prevents using a token that is about to expire. Default: 60.
+    dbx_token_cache_ttl_buffer: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("databricks_host")

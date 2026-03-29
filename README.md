@@ -4,7 +4,7 @@
 
 Entra ID で認証済みの MCP クライアント（ChatGPT / Claude Desktop など）が、[Databricks Managed MCP](https://docs.databricks.com/aws/ja/generative-ai/mcp/managed-mcp) のツールを利用できるようにする MCP プロキシサーバー。
 
-クライアントが提示した Entra ID Bearer トークンを受け取り、[OAuth Token Exchange (RFC 8693)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange) で Databricks アクセストークンに交換してからバックエンドに転送する。
+クライアントが提示した Entra ID Bearer トークンを受け取り、[OAuth Token Exchange (RFC 8693)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange) で Databricks アクセストークンに交換してからバックエンドに転送する。交換後の Databricks トークンはプロキシ内でキャッシュされ、有効期限が切れるまで同一ユーザーの後続リクエストで再利用される。
 
 ```
 MCP Client ──[Entra ID Token]──► MCP Proxy ──[Databricks Token]──► Databricks Managed MCP
@@ -148,6 +148,10 @@ PORT=3000
 # name: ツール名前空間プレフィックス（例: "sql" → ツール名 "sql_*"）
 # path: Databricks API パス
 MCP_SERVERS='[{"name": "sql", "path": "/api/2.0/mcp/sql"}]'
+
+# Databricks トークンキャッシュの有効期限マージン（秒）
+# expires_at = 取得時刻 + expires_in - DBX_TOKEN_CACHE_TTL_BUFFER
+# DBX_TOKEN_CACHE_TTL_BUFFER=60
 ```
 
 > `**OAUTH_SCOPES` と Entra ID の整合性について:** MCP Inspector 等は `BASE_URL/mcp` を `resource` パラメーターとして Entra ID に送信する。Entra ID v2.0 は `resource` と `OAUTH_SCOPES` が同じアプリを指すことを要求するため、`BASE_URL` と Entra ID の App ID URI が一致している必要がある。ローカル開発（`BASE_URL=http://localhost:...`）では OAuth フローが機能しないため、`scripts/get_entra_token.py` で取得したトークンを Bearer Token として直接使用すること。
@@ -232,6 +236,7 @@ uv run pylint src/app   # lint チェック
 | `REQUIRED_SCOPES` | —   | —      | 受信トークンの `scp` クレームに必要なスコープ名（短縮形）。未設定時は `scp` 検証をスキップ（例: `["access"]`）                        |
 | `IDENTIFIER_URI`  | —   | —      | Entra ID App Registration の Application ID URI（例: `https://your-domain.com/mcp`）             |
 | `ENTRA_VERSION`   | —   | `"2"`  | Entra ID のエンドポイントバージョン（`"1"` または `"2"`）。**トークン検証**（issuer / JWKS / audience）と **MCP クライアントへの認可サーバー通知先 URL** の両方を切り替える。v1: `sts.windows.net` issuer・`/v2.0` なしエンドポイント、v2: `login.microsoftonline.com/.../v2.0` issuer・`/v2.0` ありエンドポイント |
+| `DBX_TOKEN_CACHE_TTL_BUFFER` | — | `60` | Databricks トークンキャッシュの有効期限マージン（秒）。`expires_at = 取得時刻 + expires_in - DBX_TOKEN_CACHE_TTL_BUFFER` で計算する。期限ギリギリのトークンを使用しないための安全マージン |
 
 
 `.env` に余分な変数があっても無視される（`extra="ignore"`）。

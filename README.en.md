@@ -2,7 +2,7 @@
 
 An MCP proxy server that allows Entra ID–authenticated MCP clients (ChatGPT, Claude Desktop, etc.) to access [Databricks Managed MCP](https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp) tools.
 
-It receives the Entra ID Bearer token presented by the client, exchanges it for a Databricks access token via [OAuth Token Exchange (RFC 8693)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange), and forwards the request to the backend.
+It receives the Entra ID Bearer token presented by the client, exchanges it for a Databricks access token via [OAuth Token Exchange (RFC 8693)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange), and forwards the request to the backend. Exchanged Databricks tokens are cached inside the proxy and reused for subsequent requests from the same user until they expire.
 
 ```
 MCP Client ──[Entra ID Token]──► MCP Proxy ──[Databricks Token]──► Databricks Managed MCP
@@ -139,6 +139,10 @@ PORT=3000
 # name: tool namespace prefix (e.g. "sql" → tools named "sql_*")
 # path: Databricks API path
 MCP_SERVERS='[{"name": "sql", "path": "/api/2.0/mcp/sql"}]'
+
+# Safety margin (seconds) subtracted from expires_in when caching Databricks tokens.
+# expires_at = acquired_at + expires_in - DBX_TOKEN_CACHE_TTL_BUFFER
+# DBX_TOKEN_CACHE_TTL_BUFFER=60
 ```
 
 > **Note on `OAUTH_SCOPES` and Entra ID consistency:** MCP Inspector and similar clients send `BASE_URL/mcp` as the `resource` parameter to Entra ID. Entra ID v2.0 requires that `resource` and `OAUTH_SCOPES` point to the same app, so `BASE_URL` and the App ID URI must match. For local development (`BASE_URL=http://localhost:...`), the OAuth flow will not work because Entra ID does not recognise `http://localhost` as a registered resource. Obtain a token with `scripts/get_entra_token.py` and pass it directly as a Bearer token instead.
@@ -224,6 +228,7 @@ uv run pylint src/app   # lint check
 | `REQUIRED_SCOPES` | — | — | Short-form scope names required in incoming token `scp` claims. If not set, `scp` validation is skipped (e.g. `["access"]`) |
 | `IDENTIFIER_URI` | — | `api://<AZURE_CLIENT_ID>` | Application ID URI of the Entra App Registration (e.g. `https://your-domain.com/mcp`) |
 | `ENTRA_VERSION` | — | `"2"` | Entra ID endpoint version (`"1"` or `"2"`). Switches both **token verification** (issuer / JWKS URI / audience) and the **authorization server URL advertised to MCP clients**. v1: `sts.windows.net` issuer, endpoint without `/v2.0`; v2: `login.microsoftonline.com/.../v2.0` issuer, endpoint with `/v2.0` |
+| `DBX_TOKEN_CACHE_TTL_BUFFER` | — | `60` | Safety margin in seconds subtracted from `expires_in` when caching Databricks tokens. Computed as `expires_at = acquired_at + expires_in - DBX_TOKEN_CACHE_TTL_BUFFER`. Prevents using a token that is about to expire. |
 
 Extra variables in `.env` are silently ignored (`extra="ignore"`).
 

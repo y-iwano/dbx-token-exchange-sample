@@ -3,6 +3,7 @@ import os
 import httpx
 import pytest
 
+from app.auth.token_cache import InMemoryTokenCache
 from app.auth.token_exchange import DatabricksTokenExchanger, TokenExchangeError
 
 pytestmark = pytest.mark.skipif(
@@ -14,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 async def test_token_exchange_with_valid_entra_token(int_settings, entra_token):
     """Valid Entra ID access token is exchanged for a Databricks access token."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        exchanger = DatabricksTokenExchanger(int_settings, client)
+        exchanger = DatabricksTokenExchanger(int_settings, client, InMemoryTokenCache())
         db_token = await exchanger.exchange(entra_token)
 
     assert isinstance(db_token, str)
@@ -24,7 +25,7 @@ async def test_token_exchange_with_valid_entra_token(int_settings, entra_token):
 async def test_token_exchange_with_invalid_token(int_settings):
     """A malformed token is rejected by Databricks with 400 or 401."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        exchanger = DatabricksTokenExchanger(int_settings, client)
+        exchanger = DatabricksTokenExchanger(int_settings, client, InMemoryTokenCache())
         with pytest.raises(TokenExchangeError) as exc_info:
             await exchanger.exchange("this-is-not-a-valid-jwt")
 
@@ -34,7 +35,7 @@ async def test_token_exchange_with_invalid_token(int_settings):
 async def test_token_exchange_with_valid_entra_token_v1(int_settings, entra_token_v1):
     """Valid Entra ID v1 access token is exchanged for a Databricks access token."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        exchanger = DatabricksTokenExchanger(int_settings, client)
+        exchanger = DatabricksTokenExchanger(int_settings, client, InMemoryTokenCache())
         db_token = await exchanger.exchange(entra_token_v1)
 
     assert isinstance(db_token, str)

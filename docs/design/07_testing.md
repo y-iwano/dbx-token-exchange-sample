@@ -12,7 +12,8 @@
 tests/
   unit/
     test_config.py           # 設定バリデーションテスト
-    test_token_exchange.py   # DatabricksTokenExchanger のモックテスト
+    test_token_cache.py      # DatabricksTokenCache のユニットテスト
+    test_token_exchange.py   # DatabricksTokenExchanger のモックテスト（キャッシュ含む）
     test_transport.py        # DatabricksTokenExchangeTransport のモックテスト
     test_entra_v1.py         # create_verifier_v1 の単体テスト
   integration/
@@ -39,13 +40,37 @@ tests/
 | `MCP_SERVERS` に `path` が `/` で始まらない場合 | `ValidationError` が raise される |
 | `MCP_SERVERS` が空配列の場合 | `Settings` が正常に生成される（警告のみ） |
 
+### `test_token_cache.py`
+
+`InMemoryTokenCache` の単体テスト。外部依存なし。`time.time()` は `unittest.mock.patch` で固定する。
+
+**インターフェース準拠の検証:**
+
+| テストケース | 検証内容 |
+|---|---|
+| `InMemoryTokenCache` が `DatabricksTokenCache` のサブクラスである | `isinstance` チェック |
+
+**`InMemoryTokenCache` の動作検証:**
+
+| テストケース | 検証内容 |
+|---|---|
+| 未登録の `sub` に対して `get` を呼ぶ | `None` が返る |
+| 有効期限内のトークンを `get` する | 登録したトークンが返る |
+| 有効期限切れのトークンを `get` する | `None` が返る |
+| `set` 後に別の `sub` で `get` を呼ぶ | `None` が返る（キーの分離） |
+| 同一 `sub` で `set` を 2 回呼ぶ | 2 回目のトークンで上書きされる |
+
 ### `test_token_exchange.py`
 
-`respx`（httpx モックライブラリ）で Databricks OAuth エンドポイントへの HTTP リクエストを差し替える。
+`respx`（httpx モックライブラリ）で Databricks OAuth エンドポイントへの HTTP リクエストを差し替える。キャッシュは `DatabricksTokenCache` の実インスタンスを使用する。テスト用の Entra ID JWT は有効な Base64url ペイロードを持つ形式で生成する（署名の正当性は問わない）。
 
 | テストケース | 検証内容 |
 |---|---|
 | token exchange 成功（200） | `access_token` が正しく返る |
+| token exchange 成功後に同じ `sub` で再呼び出し | HTTP リクエストが発生せずキャッシュ済みトークンが返る |
+| キャッシュ期限切れ後に再呼び出し | HTTP リクエストが再度発生し、新しいトークンが返る |
+| 異なる `sub` のユーザーが同時リクエスト | それぞれ独立してキャッシュされる |
+| `DatabricksTokenCache` のモックを注入する | `exchange()` がモックの `get`/`set` を呼ぶことを検証（インターフェース経由の依存注入の確認） |
 | 400 エラー（`invalid_grant`） | `TokenExchangeError` が raise される。リトライなし |
 | 401 エラー | `TokenExchangeError` が raise される。リトライなし |
 | 500 エラー（1 回後に成功） | リトライ後に `access_token` が返る |
@@ -55,6 +80,7 @@ tests/
 | 501 エラー | リトライなしで即座に `TokenExchangeError` が raise される（`call_count == 1`） |
 | 502 / 503 / 504 エラー（1 回後に成功） | リトライ後に `access_token` が返る |
 | 503 + `Retry-After: 5` ヘッダー | `asyncio.sleep(5.0)` が呼ばれる（指数バックオフより優先） |
+| JWT の `sub` クレームが欠損している | `TokenExchangeError` が raise される |
 
 ### `test_transport.py`
 

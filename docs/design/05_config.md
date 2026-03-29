@@ -14,6 +14,7 @@
 | `REQUIRED_SCOPES` | — | — | 受信トークンの `scp` クレームに必要なスコープ名（短縮形。Azure Portal「API の公開」で定義した名前と一致させること）。未設定時は `scp` 検証をスキップ（例: `["access"]`） |
 | `IDENTIFIER_URI` | — | — | Entra ID App Registration の Application ID URI。OAuth メタデータのスコープ URI 生成に使用（例: `https://your-domain.com/mcp`） |
 | `ENTRA_VERSION` | — | `"2"` | Entra ID のエンドポイントバージョン（`"1"` または `"2"`）。**トークン検証**（issuer / JWKS URI / audience）と **認可サーバーエンドポイント**（MCP クライアントに通知する URL）の両方を切り替える。v1: `sts.windows.net` issuer・`/v2.0` なしエンドポイント、v2: `login.microsoftonline.com/.../v2.0` issuer・`/v2.0` ありエンドポイント |
+| `DBX_TOKEN_CACHE_TTL_BUFFER` | — | `60` | Databricks トークンキャッシュの有効期限マージン（秒）。`expires_at = 取得時刻 + expires_in - DBX_TOKEN_CACHE_TTL_BUFFER` で期限を算出する。期限ギリギリのトークンを使用しないための安全マージン |
 
 ## `MCP_SERVERS` 仕様
 
@@ -64,6 +65,10 @@ PORT=3000
 
 # Managed MCP servers to proxy
 MCP_SERVERS='[{"name": "genie", "path": "/api/2.0/mcp/genie/<genie_space_id>"}, {"name": "sql", "path": "/api/2.0/mcp/sql"}]'
+
+# Databricks token cache TTL buffer (seconds).
+# Tokens are evicted from cache this many seconds before their actual expiry.
+# DBX_TOKEN_CACHE_TTL_BUFFER=60
 ```
 
 ## `BASE_URL` と `PORT` の関係

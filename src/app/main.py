@@ -13,6 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.auth.entra import create_verifier
 from app.auth.entra_v1 import create_verifier_v1
+from app.auth.token_cache import InMemoryTokenCache
 from app.auth.token_exchange import DatabricksTokenExchanger
 from app.config import Settings
 from app.proxy.transport import DatabricksTokenExchangeTransport
@@ -60,7 +61,7 @@ def build_app(settings: Settings) -> FastMCP:  # pylint: disable=redefined-outer
         yield
         await http_client.aclose()
 
-    exchanger = DatabricksTokenExchanger(settings, http_client)
+    exchanger = DatabricksTokenExchanger(settings, http_client, InMemoryTokenCache())
 
     main = FastMCP("DBX Token Exchange Proxy", auth=auth, lifespan=lifespan)
 

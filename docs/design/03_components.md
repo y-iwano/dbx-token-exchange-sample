@@ -10,7 +10,8 @@ src/
     auth/
       __init__.py
       entra.py            # Entra ID トークン検証（AzureJWTVerifier 設定）
-      token_exchange.py   # Databricks トークン交換ロジック
+      token_cache.py      # Databricks トークンキャッシュ
+      token_exchange.py   # Databricks トークン交換ロジック（キャッシュ利用）
     proxy/
       __init__.py
       transport.py        # カスタム MCP クライアントトランスポート
@@ -193,17 +194,76 @@ def build_app(settings: Settings) -> FastMCP:
 
 ---
 
+## `auth/token_cache.py` — Databricks トークンキャッシュ
+
+### インターフェース: `DatabricksTokenCache`
+
+```python
+from abc import ABC, abstractmethod
+
+class DatabricksTokenCache(ABC):
+
+    @abstractmethod
+    def get(self, sub: str) -> str | None:
+        """有効期限内のキャッシュトークンを返す。期限切れまたは未登録の場合は None。"""
+
+    @abstractmethod
+    async def set(self, sub: str, token: str, expires_at: float) -> None:
+        """トークンをキャッシュに保存する。expires_at は UNIX タイムスタンプ。"""
+```
+
+**責務:**
+- `sub`（Entra ID JWT の `sub` クレーム）をキーにした get/set のインターフェースを定義する
+- `get` は同期メソッド。`set` は非同期メソッド（ネットワーク・ IO を伴う実装を許容するため）
+- 保存先の実装詳細（メモリ・Redis 等）はサブクラスに委譲する
+
+---
+
+### 派生クラス: `InMemoryTokenCache`
+
+```python
+@dataclass
+class CachedToken:
+    token: str
+    expires_at: float   # UNIX タイムスタンプ
+
+class InMemoryTokenCache(DatabricksTokenCache):
+    def __init__(self) -> None:
+        self._cache: dict[str, CachedToken] = {}
+        self._lock: asyncio.Lock = asyncio.Lock()
+
+    def get(self, sub: str) -> str | None:
+        """有効期限内のキャッシュトークンを返す。期限切れまたは未登録の場合は None。"""
+
+    async def set(self, sub: str, token: str, expires_at: float) -> None:
+        """asyncio.Lock でスレッドセーフに書き込む。"""
+```
+
+**責務:**
+- `DatabricksTokenCache` のインメモリ実装
+- `get` は `expires_at` と現在時刻を比較し、期限切れなら `None` を返す
+- `set` は `asyncio.Lock` で書き込みをシリアライズする
+- キャッシュエントリの明示的な削除は行わない（期限切れエントリは次の `get` 時に自然に Miss 扱いとなる）
+
+---
+
 ## `auth/token_exchange.py` — Databricks トークン交換
 
 ### クラス: `DatabricksTokenExchanger`
 
 ```python
 class DatabricksTokenExchanger:
-    def __init__(self, settings: Settings, http_client: httpx.AsyncClient): ...
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: httpx.AsyncClient,
+        cache: DatabricksTokenCache,   # インターフェース型で受け取る
+    ): ...
 
     async def exchange(self, entra_token: str) -> str:
         """
         Entra ID アクセストークンを Databricks アクセストークンに交換する。
+        キャッシュにヒットした場合は交換をスキップしてキャッシュ済みトークンを返す。
         Returns: Databricks access token
         Raises: TokenExchangeError
         """
@@ -211,9 +271,17 @@ class DatabricksTokenExchanger:
 
 ### 処理詳細
 
-1. `POST {DATABRICKS_HOST}/oidc/v1/token` に RFC 8693 形式でリクエスト
-2. レスポンスの `access_token` を返す
-3. HTTP エラー時はリトライ（後述）
+1. Entra ID JWT のペイロードを Base64 デコードして `sub` クレームを取得する
+   - `sub` 取得は標準ライブラリ（`base64` + `json`）のみで実施（追加依存なし）
+   - JWT は FastMCP が署名検証済みのため、再検証は不要
+2. `DatabricksTokenCache.get(sub)` でキャッシュを参照する（インターフェース経由）
+   - **キャッシュヒット:** Databricks トークンをそのまま返す（以降の処理はスキップ）
+   - **キャッシュミス:** 3 に進む
+3. `POST {DATABRICKS_HOST}/oidc/v1/token` に RFC 8693 形式でリクエスト
+4. レスポンスの `access_token` と `expires_in` を取得する
+5. `expires_at = time.time() + expires_in - settings.dbx_token_cache_ttl_buffer` を算出し、`DatabricksTokenCache.set(sub, token, expires_at)` でキャッシュに保存する
+6. `access_token` を返す
+7. HTTP エラー時はリトライ（後述）
 
 ### リトライ方針
 
@@ -280,7 +348,8 @@ def build_app(settings: Settings) -> FastMCP:
         base_url=settings.base_url,
         scopes_supported=settings.oauth_scopes,  # OAUTH_SCOPES 環境変数から取得
     )
-    exchanger = DatabricksTokenExchanger(settings, httpx.AsyncClient())
+    cache = InMemoryTokenCache()   # DatabricksTokenCache の派生クラスを注入
+    exchanger = DatabricksTokenExchanger(settings, httpx.AsyncClient(), cache)
 
     main = FastMCP("DBX Token Exchange Proxy", auth=auth, lifespan=lifespan)
 
@@ -324,6 +393,7 @@ MCP クライアントは単一 URL `{BASE_URL}/mcp` に接続するだけで、
 fastmcp>=3.0.0      # MCP フレームワーク（AzureJWTVerifier, RemoteAuthProvider, ProxyProvider, add_provider namespace 対応）
 httpx               # 非同期 HTTP クライアント（トークン交換リクエスト）
 pydantic-settings   # 環境変数管理
+# 追加依存なし: JWT の sub 抽出は標準ライブラリ（base64 + json）のみで実施
 ```
 
 ### 注記: `create_proxy` ではなく `ProxyProvider + add_provider` を採用した理由
